@@ -111,3 +111,53 @@ Chaque écriture est dans un try/except; en cas d’erreur on ignore l’excep
 
 Est‑ce qu’un canal vide est supprimé ?
 Non : on enlève le pseudo de la liste, mais si la liste devient vide, l’entrée du canal reste dans etat_serveur["canaux"]. 
+
+
+
+
+2- limites
+
+Ce que le serveur fait bien
+
+Simplicité : un seul exécutable, un unique dictionnaire etat_serveur et quelques méthodes dans IRCHandler ; la prise en main est immédiate.
+
+Réactivité : chaque connexion reçoit son thread, donc les I/O réseau restent non bloquantes pour les autres clients tant que la charge reste faible.
+
+Sérialisation minimale : la sauvegarde JSON suffit pour garder un état persistant léger.
+
+
+Ce que l’implémentation gère mal ou cache
+
+Couplage trop fort : les méthodes de IRCHandler lisent/écrivent l’état métier, écrivent dans le journal et envoient sur la socket dans la même fonction ; on viole la séparation I/O ‑ logique. Ex. envoyer_message manipule la liste du canal, parcourt les wfile et journalise dans le même bloc.
+
+Verrou global : un seul lock protège l’ensemble de l’état ; sous forte charge on aura contention, et un handler peut bloquer tous les autres.
+
+Erreurs silencieuses : un write() échoué est simplement « passé » ; on ne sait pas qu’un client a raté un message, donc cohérence partielle possible.
+
+Protocole implicite : aucune grammaire officielle ni codes d’erreur hiérarchisés ; impossible pour un bot externe de distinguer un message utilisateur d’une alerte système, encore moins de gérer la rétro‑compatibilité. 
+
+Testabilité faible : sans abstraction réseau il faut moquer une vraie socket TCP pour tester. De plus, la disparition silencieuse d’un canal vide ou la demi‑réussite d’un /msg ne sont pas vérifiables par unitaire.
+
+Scalabilité bloquante : l’état est monolithique, donc non réplicable. Deux instances concurrentes écraseraient leurs listes d’utilisateurs. À 1 000 clients*10 messages / s, les threads exploseraient et le GIL deviendrait le goulet. 
+
+
+Refactorisation
+
+Séparer les couches
+Un module « réseau » (IRC/WebSocket/HTTP) qui ne fait que lire/écrire sur la socket.
+Un module « métier » (join, msg, ban…) sans accès direct aux sockets ni aux fichiers.
+
+Définir un vrai protocole
+Grammaire écrite (ABNF) + codes d’erreur numérotés + numéro de version.
+
+Persistance solide
+Remplacer la sauvegarde JSON par une petite base clé‑valeur.
+
+Verrouillage plus fin
+Éviter le lock global : soit structures concurrentes, soit passer en async (event‑loop).
+
+Micro‑services ciblés
+Auth, canaux, historique et modération peuvent devenir des services séparés qui parlent REST/gRPC.
+
+Observabilité et tests
+Tests unitaires pour la logique métier, logs structurés et métriques prêtes pour Prometheus.
