@@ -1,0 +1,81 @@
+2.1 Cohérence concurrente et synchronisation
+Quels types de problèmes de concurrence peuvent apparaître dans ce système multi-clients ?
+
+Deux clients peuvent modifier un même canal en même temps, ce qui peut provoquer des erreurs de synchronisation ou des incohérences (ex : deux ajouts ou suppressions simultanées).
+
+Que peut-il arriver si deux clients rejoignent ou quittent un canal en même temps ?
+
+Si les accès ne sont pas bien synchronisés, on peut avoir des conflits : par exemple, un client est enregistré deux fois, ou bien un autre est supprimé alors qu’il vient d’arriver.
+
+Votre système est-il vulnérable aux incohérences d’état ou aux conditions de course ? Comment s’en prémunir ?
+
+Oui, sans synchronisation (comme des verrous ou des sections critiques), on risque des races conditions. On peut utiliser des locks pour protéger les structures partagées.
+
+2.2 Modularité et séparation des responsabilités
+Quelles sont les grandes responsabilités fonctionnelles de votre application serveur ?
+
+Gérer les connexions des clients, traiter les commandes reçues, envoyer les messages aux bons destinataires, gérer les canaux, et éventuellement écrire des logs.
+
+Peut-on tracer une frontière claire entre logique métier et logique d’entrée/sortie réseau ?
+
+Oui, la logique réseau (connexion, lecture/écriture socket) peut être séparée de la logique métier (traitement des commandes, gestion de l’état serveur).
+
+En cas d’erreur dans une commande, quelle couche doit réagir ?
+
+C’est la couche métier (par exemple le parseur de commandes) qui doit vérifier et envoyer une réponse d’erreur, pas la couche réseau.
+
+2.3 Scalabilité et capacité à évoluer
+Si vous deviez ajouter une nouvelle commande (/topic, /invite, /ban), quelle partie du système est concernée ?
+
+Le parseur de commandes et la logique métier. On ajoute une fonction pour cette commande et on l’intègre dans le dispatch.
+
+Que faudrait-il pour que ce serveur fonctionne à grande échelle (plusieurs centaines de clients) ?
+
+Utiliser un serveur non-bloquant (async), répartir la charge (load balancing), et optimiser les structures de données (ex : dictionnaires, files).
+
+Quelles limitations structurelles du code actuel empêchent une montée en charge ?
+
+Le modèle par thread peut vite saturer si chaque client utilise un thread. Il faut passer à un modèle asynchrone ou à base de pool de threads.
+
+2.4 Portabilité de l’architecture
+Ce serveur TCP pourrait-il être adapté en serveur HTTP ? Quelles parties seraient conservées, quelles parties changeraient ?
+
+La logique métier (gestion des canaux/utilisateurs) peut rester. Ce qui change, c’est la couche réseau (passer de TCP brut à HTTP avec gestion de requêtes/réponses).
+
+Dans une perspective micro-services, quels modules seraient candidats naturels pour devenir des services indépendants ?
+
+La gestion des utilisateurs, la gestion des canaux, la gestion des messages/logs peuvent être séparés en services distincts.
+
+Est-il envisageable de découpler la gestion des utilisateurs de celle des canaux ? Comment ?
+
+Oui, en créant deux modules/services : un pour gérer les profils utilisateurs, un autre pour l’organisation des canaux, avec une API pour communiquer entre eux.
+
+2.5 Fiabilité, tolérance aux erreurs, robustesse
+Le serveur sait-il détecter une déconnexion brutale d’un client ? Peut-il s’en remettre ?
+
+Normalement oui, via des erreurs de socket. Il faut gérer l’exception et nettoyer l’état (supprimer le client des canaux par exemple).
+
+Si un message ne peut pas être livré à un client (socket cassée), le système le détecte-t-il ?
+
+Oui, avec une erreur d’écriture sur la socket. Il faut tester les retours et agir en conséquence.
+
+Peut-on garantir une livraison ou au moins une trace fiable de ce qui a été tenté/envoyé ?
+
+Pas totalement. Pour plus de fiabilité, on peut loguer les tentatives d’envoi et les erreurs, voire ajouter un accusé de réception.
+
+2.6 Protocole : structuration et évolutivité
+Quelles sont les règles implicites du protocole que vous utilisez ?
+
+Une ligne = une commande. Elle commence par un / (ex : /msg, /join) suivie d’arguments. C’est simple, mais pas formalisé.
+
+Le protocole est-il robuste ? Que se passe-t-il si un utilisateur envoie /msg sans texte ? Ou un /join invalide ?
+
+Non, sans vérification côté serveur, ça peut créer des erreurs. Il faut ajouter des contrôles pour chaque commande.
+
+Peut-on imaginer une spécification formelle de ce protocole ?
+
+Oui, en écrivant une grammaire simple (type ABNF) ou une doc claire pour les développeurs clients.
+
+Quelle serait la différence structurelle entre ce protocole et un protocole REST ou HTTP ?
+
+Le nôtre est en texte brut, ligne par ligne, sans en-tête ou réponse structurée. REST/HTTP a un format standard, avec statuts, en-têtes, et méthodes (GET, POST…).
