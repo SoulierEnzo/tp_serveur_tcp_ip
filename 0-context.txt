@@ -1,3 +1,5 @@
+0 - Contexte
+
 2.1 Cohérence concurrente et synchronisation
 Quels types de problèmes de concurrence peuvent apparaître dans ce système multi-clients ?
 
@@ -79,3 +81,33 @@ Oui, en écrivant une grammaire simple (type ABNF) ou une doc claire pour les d�
 Quelle serait la différence structurelle entre ce protocole et un protocole REST ou HTTP ?
 
 Le nôtre est en texte brut, ligne par ligne, sans en-tête ou réponse structurée. REST/HTTP a un format standard, avec statuts, en-têtes, et méthodes (GET, POST…).
+
+
+
+
+
+1 - Fonctions
+
+2.1 Qui traite les commandes
+Quelle fonction interprète /msg, /join, etc. ?
+La boucle IRCHandler.handle() reçoit la ligne de commande et appelle set_pseudo, rejoindre_canal, envoyer_message, … pour exécuter chaque commande. 
+
+Qui accède à la mémoire partagée etat_serveur ?
+Ces mêmes méthodes ainsi que broadcast_system_message et log, toutes protégées par etat_serveur["lock"]. 
+
+2.2 Où sont stockées les infos
+Où est enregistré le canal courant d’un utilisateur ?
+Dans etat_serveur["utilisateurs"][pseudo]["canal"] après l’appel à rejoindre_canal. 
+
+Où sont les flux de sortie (wfile) associés à chaque client ?
+Dans le même dictionnaire : etat_serveur["utilisateurs"][pseudo]["wfile"], créé dans set_pseudo. 
+
+2.3 Qui peut planter
+Que se passe‑t‑il si un client quitte sans envoyer /quit ?
+Quand la socket se ferme, handle() détecte EOF, sort de la boucle, puis supprime l’utilisateur et le retire de son canal dans le bloc de nettoyage ; l’état reste cohérent. 
+
+Qu’arrive‑t‑il si un write() échoue ? Est‑ce détecté ?
+Chaque écriture est dans un try/except; en cas d’erreur on ignore l’exception et on continue, donc la défaillance est silencieuse (pas de relivraison ni de purge immédiate). 
+
+Est‑ce qu’un canal vide est supprimé ?
+Non : on enlève le pseudo de la liste, mais si la liste devient vide, l’entrée du canal reste dans etat_serveur["canaux"]. 
